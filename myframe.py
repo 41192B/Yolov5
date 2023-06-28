@@ -5,7 +5,6 @@ import mydetect     #yolo检测
 import myfatigue    #疲劳检测
 import time
 
-cap = cv2.VideoCapture(0)
 
 def frametest(frame):
     # frame为帧输入

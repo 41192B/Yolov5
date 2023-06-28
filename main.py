@@ -1,8 +1,10 @@
 #主函数
+import socket
 import sys
 import os
 from glob import glob
 
+import numpy as np
 import torch
 from PySide2 import QtWidgets,QtCore,QtGui
 from PySide2.QtWidgets import QMainWindow, QFileDialog, QMessageBox
@@ -12,7 +14,8 @@ from ui_mainwindow import Ui_MainWindow
 import cv2
 import myframe
 # 定义变量
-
+HOST = "192.168.90.72"  # 绑定的主机地址
+PORT = 12346  # 绑定的端口号
 # 眼睛闭合判断
 EYE_AR_THRESH = 0.15        # 眼睛长宽比
 EYE_AR_CONSEC_FRAMES = 2    # 闪烁阈值
@@ -45,7 +48,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def window_init(self):
         # 设置控件属性
         # 设置label的初始值
-        self.label.setText("请打开摄像头")
+        self.label.setText("请打开树莓派连接程序")
         self.label_2.setText("疲劳检测：")
         self.label_3.setText("眨眼次数：0")
         self.label_4.setText("哈欠次数：0")
@@ -55,8 +58,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.label_8.setText("喝水")
         self.label_9.setText("是否存在分心行为")
         self.label_10.setText("是否为疲劳状态")
-        self.menu.setTitle("打开")
-        self.actionOpen_camera.setText("打开摄像头")
+        self.menu.setTitle("连接")
+        self.actionOpen_camera.setText("连接树莓派")
         # 菜单按钮 槽连接 到函数
         self.actionOpen_camera.triggered.connect(CamConfig_init)
         # 自适应窗口缩放
@@ -74,7 +77,12 @@ class CamConfig:
             Ui_MainWindow.printf(window,"打开摄像头失败")
             return
         # 设置定时器周期，单位毫秒
-        self.v_timer.start(20)
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.bind((HOST, PORT))
+        self.server_socket.listen(5)
+
+        self.v_timer.start(0)
+
         # 连接定时器周期溢出的槽函数，用于显示一帧视频
         self.v_timer.timeout.connect(self.show_pic)
         # 在前端UI输出提示信息
@@ -82,14 +90,30 @@ class CamConfig:
         Ui_MainWindow.printf(window,"")
         Ui_MainWindow.printf(window,"开始执行疲劳检测...")
         window.statusbar.showMessage("正在使用摄像头...")
+        self.conn, self.addr = self.server_socket.accept()
     def show_pic(self):
         # 全局变量
         # 在函数中引入定义的全局变量
         global EYE_AR_THRESH,EYE_AR_CONSEC_FRAMES,MAR_THRESH,MOUTH_AR_CONSEC_FRAMES,COUNTER,TOTAL,mCOUNTER,mTOTAL,ActionCOUNTER,Roll,Rolleye,Rollmouth
-        
+
+        frame_data = b''
+        sizeofa = self.conn.recv(6).strip(b'\x00')
+        if len(sizeofa) == 0:
+            return 0
+        size = int(sizeofa)
+        while True:
+            if len(frame_data) + 1000 >= size:
+                while len(frame_data) != size:
+                    data = self.conn.recv(size - len(frame_data))
+                    frame_data += data
+                break
+            data = self.conn.recv(1000)
+            frame_data += data
+            # 将字节流转换为图像格式
+        nparr = np.frombuffer(frame_data, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         # 读取摄像头的一帧画面
-        success, frame = self.cap.read()
-        if success:
+        if 1:
             # 检测
             # 将摄像头读到的frame传入检测函数myframe.frametest()
             ret,frame = myframe.frametest(frame)  
